@@ -1,0 +1,120 @@
+# Practical-Machine-Learning---Final-Project
+
+---
+title: "FinalProject"
+output: html_document
+---
+The goal of your project is to predict the manner in which they did the exercise.
+This is the "classe" variable in the training set. 
+
+#Load data
+```{r}
+train = read.csv("pml-training.csv")
+test = read.csv("pml-testing.csv")
+
+str(train)
+summary(train$classe)
+```
+
+
+#Dealing with NA and missing data.  Convert blank and DIV/0 to NA.  
+#Remove variables with NA data
+```{r}
+training <- train
+training[training == ""] <- NA
+training[training == "#DIV/0!"] <- NA
+
+hasMissing <- unlist(lapply(training, function(x) any(is.na(x))))
+hasMissing <- names(hasMissing)[hasMissing]
+hasMissing
+
+`%ni%` <- Negate(`%in%`)
+training <- subset(training,select = names(training) %ni% hasMissing)
+str(training)
+training <- select(training, -(1:7))
+training <- select(training, -c(classe))  # remove classe
+str(training)
+summary(training)
+
+```
+
+
+#Check for possible transformations: skewness, near zero variance
+```{r}
+
+library(e1071)
+skewValues <- apply(training, 2, skewness) # 1 indicates rows, 2 indicates columns
+skewValues
+
+nzv = nearZeroVar(training, saveMetrics = TRUE)
+
+```
+
+
+# administer a series of transformation
+```{r}
+trans <- preProcess(training, method = c("BoxCox", "center", "scale", "pca" ))
+trans
+pcaObject <- prcomp(training, center = TRUE, scale. = TRUE)
+```
+
+# apply the transformation
+```{r}
+transformed <- predict(trans, training)
+head(transformed[ , 1:5])
+```
+
+# add class variable back to data
+```{r}
+transformed$classe <- train$classe
+```
+
+# RF with PCA (narrows down to 25 variables)
+```{r}
+rfmodel = train(classe ~ . , data = transformed, method = "rf",model=FALSE)
+```
+
+# save a copy of model
+```{r}
+saveRDS(rfmodel, file="rfmodel.rds")
+rfmodel = readRDS("rfmodel.rds")
+```
+
+# Check Accuracy : 0.983
+```{r}
+rfpredict = predict(rfmodel$final, data = transformed)
+rfaccuracy = confusionMatrix(rfpredict, transformed$classe)
+```
+
+# model on test data
+# Pre-processing and apply transformation on test set
+```{r}
+testing <- test
+`%ni%` <- Negate(`%in%`)
+testing <- subset(testing,select = names(testing) %ni% hasMissing)
+str(testing)
+testing <- select(testing, -(1:7))
+testing <- select(testing, -c(problem_id))
+
+transformed_test <- predict(trans, testing) 
+head(transformed_test[ , 1:5])
+
+rfpredict_testing = predict(rfmodel$final, newdata = transformed_test)
+rfpredict_testing
+```
+
+# create txt files for submitting answers
+```{r}
+answers = rfpredict_testing
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(answers)
+
+```
+
